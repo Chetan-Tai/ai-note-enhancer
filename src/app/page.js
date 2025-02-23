@@ -111,7 +111,7 @@ export default function Home() {
             onChange={(e) => setMode(e.target.value)}
           >
             <option value="summarize">Summarize</option>
-            <option value="paraphrase">Paraphrase</option> {/* Fixed value */}
+            <option value="paraphrase">Paraphrase</option>
           </select>
           <button
             className="bg-blue-500 text-white p-2 rounded disabled:bg-gray-400"
