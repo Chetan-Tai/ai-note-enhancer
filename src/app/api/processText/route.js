@@ -13,21 +13,22 @@ export async function POST(req) {
             throw new Error("Invalid mode");
         }
 
+        // Fetch response from Hugging Face API
         const response = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
-          method: "POST",
-          headers: {
-              "Authorization": `Bearer ${process.env.HF_API_KEY}`,
-              "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-              inputs: text,
-              parameters: {
-                  max_length: 512,   // Allow longer output
-                  do_sample: true,    // Make results more varied
-                  temperature: 0.7    // Reduce randomness slightly for better coherence
-              }
-          })
-        });      
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${process.env.HF_API_KEY}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                inputs: text,
+                parameters: {
+                    max_length: 1000,   // Allow longer output
+                    do_sample: true,    // Make results more varied
+                    temperature: 0.7    // Reduce randomness slightly for better coherence
+                }
+            })
+        });
 
         const responseText = await response.text();
         console.log("Raw API Response:", responseText);
@@ -49,6 +50,7 @@ export async function POST(req) {
             throw new Error("Failed to process text");
         }
 
+        // Return the output from Hugging Face API
         return NextResponse.json({ output }, { status: 200 });
 
     } catch (error) {

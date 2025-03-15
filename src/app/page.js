@@ -7,12 +7,14 @@ export default function Home() {
   const [mode, setMode] = useState("summarize");
   const [loading, setLoading] = useState(false);
   const [savedNotes, setSavedNotes] = useState([]);
+  const [editText, setEditText] = useState("");
+  const [editNoteId, setEditNoteId] = useState("");
 
   // Load saved notes when the page loads
   useEffect(() => {
     async function fetchNotes() {
       try {
-        const response = await fetch("/api/saveNote"); // Fixed fetch URL
+        const response = await fetch("/api/saveNote"); // Fetch saved notes
         const data = await response.json();
         if (response.ok) {
           setSavedNotes(data.notes || []);
@@ -38,7 +40,7 @@ export default function Home() {
 
       const data = await response.json();
       if (response.ok) {
-        setOutputText(data.output || "No output received."); // Added fallback
+        setOutputText(data.output || "No output received.");
       } else {
         setOutputText("Error processing text: " + (data.error || "Unknown error"));
       }
@@ -49,12 +51,26 @@ export default function Home() {
     setLoading(false);
   }
 
-  // Save processed note
+  let isSaving = false; // Flag to prevent multiple submissions
+
   async function saveNote() {
-    if (!outputText.trim()) return;
+    if (!outputText.trim()) return; // Ensure the output text isn't empty
+
+    // If saving is already in progress, return early
+    if (isSaving) return;
+
+    isSaving = true; // Set the flag to true indicating a save is in progress
+
+    // Check if the note is already saved (in the state)
+    const noteExists = savedNotes.some(note => note.content === outputText);
+    if (noteExists) {
+      console.log("Note is already saved!");
+      isSaving = false; // Reset the flag
+      return;
+    }
 
     try {
-      const response = await fetch("/api/saveNote", { // Fixed fetch URL
+      const response = await fetch("/api/saveNote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ note: outputText }),
@@ -62,28 +78,58 @@ export default function Home() {
 
       const data = await response.json();
       if (response.ok) {
-        setSavedNotes((prevNotes) => [...prevNotes, outputText]); // Fixed state update
+        // Add the saved note (with content and ID) to the list
+        setSavedNotes((prevNotes) => [
+          ...prevNotes,
+          { content: outputText, _id: data._id }, // Assuming the response has the _id
+        ]);
+        console.log(data._id);
+        setOutputText("");
       } else {
         console.error("Error saving note:", data.error);
       }
     } catch (error) {
       console.error("Error:", error);
+    } finally {
+      isSaving = false; // Reset the flag after the save attempt
     }
   }
 
-  async function deleteNote(index) {
+  async function updateNote(noteId){
+    const response = await fetch("/api/saveNote", {
+      method: "PUT",
+      headers: { "Content-type": "application/json" },
+      body: JSON.stringify({ noteId, updatedContent: editText }),
+    })
+
+    if (response.ok) {
+      setSavedNotes((prevNotes) => prevNotes.map((note) => 
+        note._id === noteId ? { ...note, content: editText } : note
+      )
+    );
+    setEditNoteId(null);
+    }
+  }
+
+  const startEditing = (note) => {
+    setEditNoteId(note._id);
+    setEditText(note.content);
+  }
+
+  async function deleteNote(noteId) {
     try {
       const response = await fetch("/api/saveNote", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ noteIndex: index }),
+        body: JSON.stringify({ noteId }), // Send the noteId in the request body
       });
-  
+
       if (response.ok) {
         const data = await response.json();
         console.log(data.message);
 
-        setSavedNotes((prevNotes) => prevNotes.filter((_, i) => i !== index));
+        // Remove the deleted note from the state
+        setSavedNotes((prevNotes) => prevNotes.filter((note) => note._id !== noteId));
       } else {
         const errorData = await response.json();
         console.error("Error deleting note:", errorData.error);
@@ -114,7 +160,7 @@ export default function Home() {
             <option value="paraphrase">Paraphrase</option>
           </select>
           <button
-            className="bg-blue-500 text-white p-2 rounded disabled:bg-gray-400"
+            className="bg-orange-400 text-white p-2 rounded"
             onClick={handleSubmit}
             disabled={loading || !inputText.trim()}
           >
@@ -138,16 +184,49 @@ export default function Home() {
             <p>No notes saved yet.</p>
           ) : (
             <ul>
-              {savedNotes.map((note, index) => (
-                <li className="mt-4 p-2 border border-black rounded" key={index}>
-                  {note}
-                  <div>
-                  <button 
-                    className="bg-red-400 mt-1 p-2 border border-black rounded-xl text-white"
-                    onClick={() => deleteNote(index)}>
-                      Delete
-                  </button>
-                  </div>
+              {savedNotes.map((note) => (
+                <li className="mt-4 p-2 border border-black rounded" key={note._id}>
+                  {editNoteId === note._id ? (
+                    <>
+                      <textarea
+                        className="border p-2 w-full"
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        placeholder={ editText }
+                        rows="4"
+                      ></textarea>
+                      <div className="flex gap-2">
+                        <button 
+                          className="bg-gray-800 mt-1 p-2 border border-black rounded-xl text-white"
+                          onClick={() => updateNote(note._id)}>
+                            Update
+                        </button>
+                        <button 
+                          className="bg-gray-400 mt-1 p-2 border border-black rounded-xl text-white"
+                          onClick={() => setEditNoteId(null)}>
+                            Cancel
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p>{note.content}</p>
+                      <div className="flex gap-2">
+                        <button
+                          className="bg-red-400 mt-1 p-2 border border-black rounded-xl text-white"
+                          onClick={() => deleteNote(note._id)}
+                        >
+                          Delete
+                        </button>
+                        <button
+                          className="bg-blue-400 mt-1 p-2 border border-black rounded-xl text-white"
+                          onClick={() => startEditing(note)}
+                        >
+                          Edit Note
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </li>
               ))}
             </ul>
@@ -157,109 +236,3 @@ export default function Home() {
     </main>
   );
 }
-
-
-// "use client";
-
-// import React, { useState, useEffect } from "react";
-// import callHuggingFace from "../../src/huggingface.js";
-
-// const Page = () => {
-//   const [inputText, setInputText] = useState("");
-//   const [outputText, setOutputText] = useState("");
-//   const [mode, setMode] = useState("summarize");
-//   const [savedNotes, setSavedNotes] = useState([]);
-//   const [loading, setLoading] = useState(false);
-
-//   // Load notes from local storage on mount
-//   useEffect(() => {
-//     if (typeof window !== "undefined") {
-//       const notes = JSON.parse(localStorage.getItem("notes")) || [];
-//       setSavedNotes(notes);
-//     }
-//   }, []);
-
-//   // Save notes to local storage
-//   const saveNote = () => {
-//     if (outputText.trim() === "") return;
-//     setSavedNotes((prevNotes) => {
-//       const updatedNotes = [...prevNotes, outputText];
-//       localStorage.setItem("notes", JSON.stringify(updatedNotes));
-//       return updatedNotes;
-//     });
-//   };
-
-//   const handleSubmit = async () => {
-//     if (!inputText.trim()) return;
-//     setLoading(true);
-//     try {
-//       const response = await callHuggingFace(inputText, mode);
-//       setOutputText(response);
-//     } catch (error) {
-//       console.error("Error processing text:", error);
-//       setOutputText("Failed to process the text. Please try again.");
-//     }
-//     setLoading(false);
-//   };
-
-//   const deleteNote = (index) => {
-//     setSavedNotes((prevNotes) => {
-//       const updatedNotes = prevNotes.filter((_, i) => i !== index);
-//       localStorage.setItem("notes", JSON.stringify(updatedNotes));
-//       return updatedNotes;
-//     });
-//   };
-
-//   return (
-//     <main className="p-4 min-h-screen bg-white text-black flex justify-center">
-//       <div className="w-full max-w-3xl"> {/* Centered container with limited width */}
-//         <h1 className="text-3xl font-bold mb-4">AI Note Enhancer</h1>
-//         <textarea
-//           className="w-full p-2 border border-black rounded"
-//           rows="10"
-//           value={inputText}
-//           onChange={(e) => setInputText(e.target.value)}
-//           placeholder="Enter your text here..."
-//         ></textarea>
-//         <div className="flex gap-4 mt-2">
-//           <select
-//             className="border border-black p-2 rounded bg-white text-black"
-//             value={mode}
-//             onChange={(e) => setMode(e.target.value)}
-//           >
-//             <option value="summarize" className="text-black">Summarize</option>
-//             <option value="rewrite" className="text-black">Reword</option>
-//           </select>
-//           <button
-//             className="bg-blue-500 text-white p-2 rounded disabled:bg-gray-400"
-//             onClick={handleSubmit}
-//             disabled={loading || !inputText.trim()}
-//           >
-//             {loading ? "Processing..." : "Process"}
-//           </button>
-//           <button className="bg-green-500 text-white p-2 rounded" onClick={saveNote}>
-//             Save Note
-//           </button>
-//         </div>
-//         <div className="mt-4 p-2 border border-black rounded">
-//           <h2 className="font-semibold">Output:</h2>
-//           <p>{outputText}</p>
-//         </div>
-//         <div className="mt-4">
-//           <h2 className="font-semibold">Saved Notes:</h2>
-//           <ul className="list-disc pl-5">
-//             {savedNotes.map((note, index) => (
-//               <li key={index} className="border border-black p-2 rounded mt-2 flex justify-between">
-//                 {note}
-//                 <button className="text-red-500 ml-2" onClick={() => deleteNote(index)}>X</button>
-//               </li>
-//             ))}
-//           </ul>
-//         </div>
-//       </div>
-//     </main>
-//   );
-// };
-
-
-// export default Page;
